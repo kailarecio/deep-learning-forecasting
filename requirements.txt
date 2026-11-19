@@ -1,0 +1,7 @@
+pandas
+plotly
+dukascopy-python
+scipy
+torch
+pyyaml
+arch
