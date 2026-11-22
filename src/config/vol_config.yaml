@@ -1,0 +1,42 @@
+# hyperparameters
+seed: 42
+pairs: [USDJPY, EURUSD, GBPUSD, AUDUSD]
+
+compute:
+  n_workers: 4                 # parallel single-thread processes for network training and bandit runs (if needed, since M1 = 4 performance cores)
+
+data:
+  base_minutes: 5
+  start: '2016-11-01'          # UTC
+  end: '2026-10-31'
+  cache_dir: data              # cache data for training speed
+  min_obs_per_hour: 10         # an hour needs >= 10 of its 12 five-minute returns, otherwise drop
+  max_gap_minutes: 30          # for weekends, holidays, outages
+
+features:
+  nn_inputs: [x, x_week, z_ret, log_spread, tod_sin, tod_cos]
+  lookback: 24                 # NN input window
+  har_day: 24
+  har_week: 120
+  rv_floor: 1.0e-10            
+
+split:
+  n_folds: 12                  # test period: 12 blocks of 6 months each
+  initial_train_frac: 0.4      # pure training data
+  embargo: 24                  # hours dropped between training data and each test block
+  val_frac: 0.2                # tail of each training set used for early stopping
+
+garch:
+  p: 1
+  q: 1
+  dist: normal
+
+nn:
+  hidden_size: 32
+  num_layers: 1
+  dropout: 0.0
+  lr: 0.001
+  weight_decay: 0.0001
+  batch_size: 64
+  max_epochs: 50
+  patience: 5                  # early stopping epochs
