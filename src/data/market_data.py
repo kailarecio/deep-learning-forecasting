@@ -10,7 +10,7 @@ from dukascopy_python.compat import instruments
 
 from src.config.logging_config import get_logger
 from src.dto.config import VolConfig
-from src.dto.enums import TZ_LONDON, TZ_NEW_YORK, TZ_TOKYO, Session
+from src.dto.enums import TZ_LONDON, TZ_NEW_YORK, Session
 
 logger = get_logger(__name__)
 
@@ -61,8 +61,7 @@ def fetch_bars(side: str, config: VolConfig) -> pd.DataFrame:
         logger.info(f'{data.pair} {side}: {start:%Y-%m-%d} -> {stop:%Y-%m-%d} ({len(chunks[-1]):,} bars, {time.perf_counter() - t0:.0f}s)')
         start = stop
     df = pd.concat(chunks).sort_index()
-    # duka.fetch includes a bar stamped exactly at `end`, and the next chunk starts at that same time,
-    # so the bar on each chunk boundary comes back twice
+  
     df = df[~df.index.duplicated(keep='first')]
     df.to_pickle(path)
     return df
@@ -147,14 +146,10 @@ def build_hourly_frame(df_bid: pd.DataFrame, df_ask: pd.DataFrame, config: VolCo
     data_cfg, feat_cfg = config.data, config.features
     five = five_minute_frame(df_bid, df_ask, config)
 
-    # Within an hour (bars stamped hh:00 ... hh:55; each bar's return runs from the previous close to its close):
-    #   rv  = sum of squared 5-min log returns  -> realized variance of the hour (Andersen & Bollerslev, 1998)
-    #   ret = sum of 5-min log returns          -> the hour's log return, because log returns add up:
-    #         sum_i log(p_i / p_{i-1}) = log(p_last / p_first-1). A return dropped at a gap is simply missing.
+  
     hourly = five.groupby(five.index.floor('h')).agg(
         rv=('r2', 'sum'), ret=('r', 'sum'), n_obs=('r', 'count'), mid=('mid', 'last'), rel_spread=('rel_spread', 'last'))
     hourly = hourly[hourly['n_obs'] >= data_cfg.min_obs_per_hour]
-    # an hour with missing 5-min returns is scaled up to a full hour's worth of squared returns
     hourly = hourly.assign(rv=(hourly['rv'] * data_cfg.bars_per_hour / hourly['n_obs']).clip(lower=feat_cfg.rv_floor))
 
     # volatility level, shock and trend (all known at the end of the hour)
@@ -182,19 +177,3 @@ def build_hourly_frame(df_bid: pd.DataFrame, df_ask: pd.DataFrame, config: VolCo
     hourly = hourly.assign(target_rv=hourly['rv'].shift(-1).where(contiguous.to_numpy()),
                            target_ret=hourly['ret'].shift(-1).where(contiguous.to_numpy()))
     return hourly.dropna(subset=['rv24', 'trend'])
-
-
-def session_hours_table() -> pd.DataFrame:
-    """Start / end of every session in New York, London, Tokyo and UTC, on a winter and a summer day."""
-    rows = []
-    for season, day in [('winter', '2026-01-14'), ('summer', '2026-07-15')]:
-        idx = pd.date_range(f'{day} 18:00', periods=24, freq='h', tz=TZ_NEW_YORK).tz_convert('UTC')   # Asia first
-        sessions = pd.Series(assign_sessions(idx), index=idx)
-        block = (sessions != sessions.shift()).cumsum()
-        for _, g in sessions.groupby(block):
-            start, end = g.index[0], g.index[-1] + pd.Timedelta(hours=1)
-            rows.append({'season': season, 'session': g.iat[0], 'hours': len(g),
-                         **{tz: f'{start.tz_convert(zone):%H:%M}-{end.tz_convert(zone):%H:%M}'
-                            for tz, zone in [('New York', TZ_NEW_YORK), ('London', TZ_LONDON),
-                                             ('Tokyo', TZ_TOKYO), ('UTC', 'UTC')]}})
-    return pd.DataFrame(rows).set_index(['season', 'session'])

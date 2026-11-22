@@ -1,1 +1,19 @@
-data/
+# Byte-compiled / caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Jupyter
+.ipynb_checkpoints
+
+# Environments
+.env
+.venv
+env/
+venv/
+
+# OS
+.DS_Store
+
+# downloaded bars and cached forecasts (rebuilt by vol_bandits.ipynb)
+data_cache/
